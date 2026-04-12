@@ -2,6 +2,33 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
+import streamlit as st
+
+def check_password():
+    """로그인 성공 시 True를 반환합니다."""
+    def password_entered():
+        if st.session_state["password"] == "church1234": # 실제 비번은 secrets에 저장 추천
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # 보안을 위해 세션에서 비번 삭제
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # 로그인 화면 UI
+        st.text_input("직분자 인증 비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input("비밀번호가 틀렸습니다. 다시 입력하세요", type="password", on_change=password_entered, key="password")
+        return False
+    else:
+        return True
+
+if not check_password():
+    st.stop()  # 로그인 안 되면 여기서 코드 중단
+
+# --- 이 아래에 기존의 교회 행정 메인 코드 배치 ---
+st.success("✅ 인증되었습니다. 환영합니다!")
+
 # 페이지 설정
 st.set_page_config(page_title="Church Admin System", layout="wide")
 
