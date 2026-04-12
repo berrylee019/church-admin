@@ -2,32 +2,69 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-import streamlit as st
 
-def check_password():
-    """로그인 성공 시 True를 반환합니다."""
-    def password_entered():
-        if st.session_state["password"] == "0191": # 실제 비번은 secrets에 저장 추천
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # 보안을 위해 세션에서 비번 삭제
-        else:
-            st.session_state["password_correct"] = False
+# 1. 가상의 사용자 데이터베이스 (아이디: [비밀번호, 직분])
+USER_DB = {
+    "admin": ["church777", "관리자"],
+    "staff": ["staff123", "교직원"],
+    "leader": ["leader00", "구역장"]
+}
 
-    if "password_correct" not in st.session_state:
-        # 로그인 화면 UI
-        st.text_input("직분자 인증 비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.text_input("비밀번호가 틀렸습니다. 다시 입력하세요", type="password", on_change=password_entered, key="password")
+def login_sidebar():
+    st.sidebar.title("🔐 직분자 로그인")
+    
+    # 세션 상태 초기화
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+        st.session_state.user_role = None
+
+    if not st.session_state.logged_in:
+        input_id = st.sidebar.text_input("아이디")
+        input_pw = st.sidebar.text_input("비밀번호", type="password")
+        
+        if st.sidebar.button("로그인"):
+            if input_id in USER_DB and USER_DB[input_id][0] == input_pw:
+                st.session_state.logged_in = True
+                st.session_state.user_role = USER_DB[input_id][1]
+                st.session_state.user_id = input_id
+                st.sidebar.success(f"{st.session_state.user_role}님 환영합니다!")
+                st.rerun() # 화면 즉시 갱신
+            else:
+                st.sidebar.error("아이디 또는 비밀번호가 틀렸습니다.")
         return False
     else:
+        st.sidebar.write(f"✅ **{st.session_state.user_id}** ({st.session_state.user_role}) 접속 중")
+        if st.sidebar.button("로그아웃"):
+            st.session_state.logged_in = False
+            st.rerun()
         return True
 
-if not check_password():
-    st.stop()  # 로그인 안 되면 여기서 코드 중단
+# --- 메인 로직 시작 ---
+is_authenticated = login_sidebar()
 
-# --- 이 아래에 기존의 교회 행정 메인 코드 배치 ---
-st.success("✅ 인증되었습니다. 환영합니다!")
+if is_authenticated:
+    role = st.session_state.user_role
+    
+    # 권한별 메뉴 구성
+    menu_options = ["공지사항"] # 공통 메뉴
+    
+    if role == "관리자":
+        menu_options += ["교적부 관리", "재정 관리", "출석 통계"]
+    elif role == "교직원":
+        menu_options += ["교적부 관리", "출석 체크"]
+    elif role == "구역장":
+        menu_options += ["출석 체크"]
+
+    choice = st.sidebar.radio("행정 메뉴", menu_options)
+    
+    st.title(f"⛪ {choice}")
+    st.write(f"{role} 권한으로 접속하셨습니다.")
+    
+    # 여기에 선택된 메뉴별 기능(if choice == "...") 코드를 넣으시면 됩니다.
+
+else:
+    st.title("⛪ 교회 행정 시스템")
+    st.warning("왼쪽 사이드바에서 로그인 후 이용해 주세요.")
 
 # 페이지 설정
 st.set_page_config(page_title="Church Admin System", layout="wide")
