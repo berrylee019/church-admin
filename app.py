@@ -5,9 +5,9 @@ from datetime import datetime
 
 # 1. 가상의 사용자 데이터베이스 (아이디: [비밀번호, 직분])
 USER_DB = {
-    "admin": ["church777", "관리자"],
-    "staff": ["staff123", "교직원"],
-    "leader": ["leader00", "구역장"]
+    "admin": ["0191", "관리자"],
+    "staff": ["0191", "교직원"],
+    "leader": ["0191", "구역장"]
 }
 
 def login_sidebar():
