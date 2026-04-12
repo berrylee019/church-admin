@@ -45,7 +45,7 @@ if is_authenticated:
     role = st.session_state.user_role
     
     # 권한별 메뉴 구성
-    menu_options = ["공지사항"] # 공통 메뉴
+    menu_options = ["공지사항", "주보 발행 및 관리"] # 공통 메뉴
     
     if role == "관리자":
         menu_options += ["교적부 관리", "재정 관리", "출석 통계"]
@@ -59,7 +59,12 @@ if is_authenticated:
     st.title(f"⛪ {choice}")
     st.write(f"{role} 권한으로 접속하셨습니다.")
     
-    # 여기에 선택된 메뉴별 기능(if choice == "...") 코드를 넣으시면 됩니다.
+# --- 3. 선택된 메뉴에 따른 기능 실행 (반드시 이 안에서 처리) ---
+    if choice == "공지사항":
+        st.write("공지사항 화면입니다.")
+        
+    elif choice == "주보 발행 및 관리":
+        st.header("📄 주보 제작 및 PDF 출력")
 
 else:
     st.title("⛪ 교회 행정 시스템")
