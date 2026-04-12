@@ -7,7 +7,7 @@ import streamlit as st
 def check_password():
     """로그인 성공 시 True를 반환합니다."""
     def password_entered():
-        if st.session_state["password"] == "church1234": # 실제 비번은 secrets에 저장 추천
+        if st.session_state["password"] == "0191": # 실제 비번은 secrets에 저장 추천
             st.session_state["password_correct"] = True
             del st.session_state["password"]  # 보안을 위해 세션에서 비번 삭제
         else:
