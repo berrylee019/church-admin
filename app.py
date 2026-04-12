@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-
 # 1. 가상의 사용자 데이터베이스 (아이디: [비밀번호, 직분])
 USER_DB = {
     "admin": ["0191", "관리자"],
@@ -79,8 +78,62 @@ if 'members' not in st.session_state:
 st.title("⛪ 스마트 교회 행정 관리 시스템")
 
 # --- 사이드바 메뉴 ---
-menu = st.sidebar.radio("메뉴 선택", ["교적부 관리", "재정/헌금 관리", "출석 체크", "공지사항"])
+menu = st.sidebar.radio("메뉴 선택", ["주보 발행 및 관리", "교적부 관리", "재정/헌금 관리", "출석 체크", "공지사항"])
 
+from fpdf import FPDF
+import io
+
+# --- 주보 관리 메뉴 로직 ---
+if choice == "주보 발행 및 관리":
+    st.header("📄 주보 제작 및 PDF 출력")
+    
+    with st.form("bulletin_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            b_date = st.date_input("발행 주일", datetime.now())
+            b_title = st.text_input("예배 명칭", "주일 장년예배")
+        with col2:
+            b_preacher = st.text_input("설교자", "OOO 목사")
+            b_passage = st.text_input("본문 말씀", "창세기 1:1-5")
+
+        b_sermon_title = st.text_input("설교 제목")
+        b_order = st.text_area("예배 순서 (한 줄에 하나씩)", "찬양\n교독문\n기도\n성경봉독\n설교\n축도")
+        b_news = st.text_area("교회 소식 및 광고")
+
+        submit = st.form_submit_button("주보 내용 저장 및 PDF 미리보기")
+
+    if submit:
+        # 1. 데이터 저장 (여기서는 세션에 임시 저장, 추후 DB 연동)
+        st.success(f"{b_date} 주보 내용이 시스템에 기록되었습니다.")
+        
+        # 2. PDF 생성 로직
+        pdf = FPDF()
+        pdf.add_page()
+        # 한글 폰트 설정이 필요합니다 (NanumGothic.ttf 등 서버에 있는 폰트 경로)
+        # pdf.add_font('Nanum', '', 'NanumGothic.ttf', uni=True) 
+        # pdf.set_font('Nanum', size=16)
+        
+        pdf.set_font("Arial", 'B', 20) # 폰트 설정 (한글 처리는 별도 설정 필요)
+        pdf.cell(200, 10, txt=f"Weekly Bulletin: {b_date}", ln=True, align='C')
+        
+        pdf.set_font("Arial", size=12)
+        pdf.ln(10)
+        pdf.cell(200, 10, txt=f"Title: {b_sermon_title}", ln=True)
+        pdf.cell(200, 10, txt=f"Passage: {b_passage}", ln=True)
+        pdf.ln(5)
+        pdf.multi_cell(0, 10, txt=f"Order:\n{b_order}")
+        pdf.ln(5)
+        pdf.multi_cell(0, 10, txt=f"Church News:\n{b_news}")
+
+        # PDF 다운로드 버튼
+        html_pdf = pdf.output(dest='S').encode('latin-1') # 실제 한글 설정 시 'utf-8' 등 조절
+        st.download_button(
+            label="📥 주보 PDF 다운로드",
+            data=html_pdf,
+            file_name=f"bulletin_{b_date}.pdf",
+            mime="application/pdf"
+        )
+        
 # --- 모듈 1: 교적부 관리 ---
 if menu == "교적부 관리":
     st.header("👥 성도 명부 및 검색")
