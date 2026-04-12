@@ -19,8 +19,8 @@ def login_sidebar():
         st.session_state.user_role = None
 
     if not st.session_state.logged_in:
-        input_id = st.sidebar.text_input("church")
-        input_pw = st.sidebar.text_input("0191", type="password")
+        input_id = st.sidebar.text_input("아이디")
+        input_pw = st.sidebar.text_input("비밀번호", type="password")
         
         if st.sidebar.button("로그인"):
             if input_id in USER_DB and USER_DB[input_id][0] == input_pw:
