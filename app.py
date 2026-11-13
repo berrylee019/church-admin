@@ -1,25 +1,38 @@
 import streamlit as st
 from datetime import date, timedelta
 import streamlit.components.v1 as components
-import json, copy
+import json, copy, base64, re
 
 st.set_page_config(page_title="남서울전원교회 주보 발행", layout="wide")
 
-# ---------------- 로그인 ----------------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if not st.session_state.logged_in:
+# ============================================================
+# 0. 비밀번호: Streamlit Cloud > Settings > Secrets 에만 저장
+# Secrets에 이렇게 한 줄 넣으세요:
+# APP_PASSWORD = "실제비밀번호"
+# 코드 안에는 비밀번호를 절대 적지 않습니다.
+# ============================================================
+def check_password():
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+    if st.session_state.logged_in:
+        return True
     st.title("⛪ 남서울전원교회 주보 발행")
+    try:
+        correct = st.secrets["APP_PASSWORD"]
+    except Exception:
+        st.error("Secrets에 APP_PASSWORD가 설정되지 않았습니다.")
+        st.info("Streamlit Cloud > 앱 선택 > Settings > Secrets에 APP_PASSWORD = \"비밀번호\" 를 입력하고 Save를 누르세요.")
+        st.stop()
     pw = st.text_input("비밀번호", type="password")
     if st.button("로그인"):
-        # Streamlit Cloud > Settings > Secrets 에 APP_PASSWORD="..." 로 저장 권장
-        ok = st.secrets.get("APP_PASSWORD", "0191") if hasattr(st, "secrets") else "0191"
-        if pw == ok:
+        if pw == correct:
             st.session_state.logged_in = True
             st.rerun()
         else:
             st.error("비밀번호가 틀렸습니다.")
     st.stop()
+
+check_password()
 
 # ---------------- 기본값: 2026-11-08 주보 (45호) ----------------
 DEFAULT = {
@@ -35,21 +48,16 @@ DEFAULT = {
     "elder2": "이 재 영",
     "address": "서울시 서초구 내곡동 신흥안길 40-61",
     "phone": "02) 451-9192",
-    # 교회소식 1~5
     "news1": "예배 후에 오찬을 즐기시면서 성도의 교제를 나누시기 바랍니다.",
     "news2": "오늘 설교는 장훈두 목사님입니다.",
     "news3": "다음주일은 추수감사절입니다. 설교는 윤건웅 목사님입니다. 추수감사절에 특별히 평소 전도하는 주변의 이웃들을 초청하여 함께 감사예배를 드리면 좋겠습니다.",
     "news4": "어제 교회에서 김장김치를 하셨습니다. 수고해 주신 성도님들께 감사합니다.",
     "news5": "나라와 민족을 위해, 투병중에 계신 성도님들(장미화집사, 김지우어린이)과 교회의 정상화와 부흥을 위해, 비대위원장님을 위해서 기도 바랍니다.",
-    # 11월 대표기도자: [날짜, 이름]
     "prayers": [["1일", "장훈길 장로"], ["8일", "장훈길 장로"], ["15일", "구태덕 안수집사"], ["23일", "이병서 피택집사"], ["29일", "장훈길 장로"]],
-    # 지난주 헌금하신 분
     "donor_tithe": "장미화 장은경 장훈길 장훈두 지희자",
     "donor_thanks": "구태덕 장은경 장훈두 지희자",
     "donor_mission": "김현숙 김정자 윤건웅 이병서 장미화 장 철",
     "donor_sunday": "김철주 이금영",
-    "donor_extra": "정헌두 지희자",
-    # 주일예배
     "worship_time": "오전 11시",
     "leader": "장훈길장로",
     "mukdo": "다같이",
@@ -76,7 +84,6 @@ DEFAULT = {
     "hymn4": "찬 620 장",
     "hymn4_who": "다같이",
     "benediction_who": "설교자",
-    # 4면 설교 본문
     "sermon_page_title": "추수의 계절",
     "sermon_ref": "<마태복음 3장 8-12절, 13장 24-30절 말씀> 신약 3, 21쪽",
     "sermon_body": """8. 그러므로 회개에 합당한 열매를 맺고
@@ -92,68 +99,68 @@ DEFAULT = {
 29. 주인이 이르되 가만 두라 가라지를 뽑다가 곡식까지 뽑을까 염려하노라
 30. 둘 다 추수 때까지 함께 자라게 두라 추수 때에 내가 추수꾼들에게 말하기를 가라지는 먼저 거두어 불사르게 단으로 묶고 곡식은 모아 내 곳간에 넣으라 하리라""",
 }
-
 if "bulletin" not in st.session_state:
     st.session_state.bulletin = copy.deepcopy(DEFAULT)
+if "cover_img" not in st.session_state:
+    st.session_state.cover_img = ""  # base64 data URI
 B = st.session_state.bulletin
 
-# ---------------- 사이드바: 바뀌는 부분만 입력 ----------------
+# ---------------- 사이드바 ----------------
 st.sidebar.title("📝 매주 바뀌는 부분만 입력")
-st.sidebar.caption("입력하면 오른쪽 미리보기에 바로 반영됩니다.")
-
 with st.sidebar:
     if st.button("➕ 다음 주보로 복사 (날짜 +7일, 호수 +1)"):
-        try:
-            # 날짜 파싱이 안 되면 그대로 두고 호수만 올림
-            import re
-            m = re.search(r"(\d+)년\s*(\d+)월\s*(\d+)일", B["date_text"])
-            if m:
-                d = date(int(m.group(1)), int(m.group(2)), int(m.group(3))) + timedelta(days=7)
-                B["date_text"] = f"{d.year}년 {d.month}월 {d.day}일"
-            n = re.search(r"(\d+)", B["issue"])
-            if n:
-                B["issue"] = B["issue"].replace(n.group(1), str(int(n.group(1))+1))
-            st.rerun()
-        except Exception as e:
-            st.error(str(e))
+        m = re.search(r"(\d+)년\s*(\d+)월\s*(\d+)일", B["date_text"])
+        if m:
+            d = date(int(m.group(1)), int(m.group(2)), int(m.group(3))) + timedelta(days=7)
+            B["date_text"] = f"{d.year}년 {d.month}월 {d.day}일"
+        n = re.search(r"(\d+)", B["issue"])
+        if n:
+            B["issue"] = B["issue"].replace(n.group(1), str(int(n.group(1))+1))
+        st.rerun()
     if st.button("↩ 11/8 원본으로 되돌리기"):
         st.session_state.bulletin = copy.deepcopy(DEFAULT)
         st.rerun()
 
-    with st.expander("1️⃣ 표지 (1면) - 제일 먼저", expanded=True):
+    with st.expander("1️⃣ 표지 (1면) + 표지 사진", expanded=True):
         B["issue"] = st.text_input("호수", B["issue"])
-        B["date_text"] = st.text_input("날짜", B["date_text"], help="예: 2026년 11월 15일")
-        B["theme_ko"] = st.text_input("표지 제목", B["theme_ko"], help="예: 성령의열매:절제")
-        B["theme_en"] = st.text_input("표지 영문", B["theme_en"], help="예: self-control")
+        B["date_text"] = st.text_input("날짜", B["date_text"])
+        B["theme_ko"] = st.text_input("표지 제목", B["theme_ko"])
+        B["theme_en"] = st.text_input("표지 영문", B["theme_en"])
+        # ★ 표지 사진 매주 교체
+        up_img = st.file_uploader("🖼️ 표지 가운데 사진 (매주 교체)", type=["jpg", "jpeg", "png", "webp"], key="cover_up")
+        if up_img is not None:
+            b64 = base64.b64encode(up_img.read()).decode()
+            st.session_state.cover_img = f"data:{up_img.type};base64,{b64}"
+            st.success("표지 사진이 적용됐습니다.")
+        if st.session_state.cover_img:
+            st.image(st.session_state.cover_img, width=180, caption="현재 표지 사진")
+            if st.button("표지 사진 지우기"):
+                st.session_state.cover_img = ""
+                st.rerun()
+        else:
+            st.caption("사진을 안 올리면 🌱 자리 표시자가 나옵니다.")
 
-    with st.expander("2️⃣ 교회 소식 (2면) - 1~5번", expanded=True):
+    with st.expander("2️⃣ 교회 소식 (2면) - 1~5번", expanded=False):
         for i in range(1, 6):
             B[f"news{i}"] = st.text_area(f"{i}. 소식", B[f"news{i}"], height=80, key=f"news{i}")
-
-    with st.expander("3️⃣ 11월 대표기도자 (2면 하단)", expanded=False):
-        st.caption("날짜와 이름을 바꾸세요. 행 추가/삭제 가능")
-        new_prayers = []
+    with st.expander("3️⃣ 11월 대표기도자", expanded=False):
+        new_p = []
         for idx, (d, n) in enumerate(B["prayers"]):
             c1, c2 = st.columns([1, 2])
             d = c1.text_input(f"날짜 {idx+1}", d, key=f"pr_d{idx}")
             n = c2.text_input(f"이름 {idx+1}", n, key=f"pr_n{idx}")
-            new_prayers.append([d, n])
-        B["prayers"] = new_prayers
+            new_p.append([d, n])
+        B["prayers"] = new_p
         if st.button("기도자 행 +1"):
-            B["prayers"].append(["", ""])
-            st.rerun()
+            B["prayers"].append(["", ""]); st.rerun()
         if st.button("기도자 마지막 행 삭제") and B["prayers"]:
-            B["prayers"].pop()
-            st.rerun()
-
-    with st.expander("4️⃣ 지난주 헌금하신 분 (2면 하단)", expanded=False):
+            B["prayers"].pop(); st.rerun()
+    with st.expander("4️⃣ 지난주 헌금하신 분", expanded=False):
         B["donor_tithe"] = st.text_input("십 일 조", B["donor_tithe"])
         B["donor_thanks"] = st.text_input("감사헌금", B["donor_thanks"])
         B["donor_mission"] = st.text_input("선교헌금", B["donor_mission"])
         B["donor_sunday"] = st.text_input("주정헌금", B["donor_sunday"])
-        B["donor_extra"] = st.text_input("예 배 안 내 (아래 표)", B["donor_extra"])
-
-    with st.expander("5️⃣ 주일 예배 (3면) - 사회자 / 순서", expanded=False):
+    with st.expander("5️⃣ 주일 예배 (3면)", expanded=False):
         B["leader"] = st.text_input("사회자", B["leader"])
         B["worship_time"] = st.text_input("예배 시간", B["worship_time"])
         B["mukdo"] = st.text_input("묵도", B["mukdo"])
@@ -172,44 +179,36 @@ with st.sidebar:
         B["hymn3"] = st.text_input("찬송 3", B["hymn3"])
         B["hymn4"] = st.text_input("찬송 4", B["hymn4"])
         B["benediction_who"] = st.text_input("축도", B["benediction_who"])
-
-    with st.expander("6️⃣ 설교 본문 (4면) - 전부 교체", expanded=False):
+    with st.expander("6️⃣ 설교 본문 (4면)", expanded=False):
         B["sermon_page_title"] = st.text_input("4면 큰 제목", B["sermon_page_title"])
         B["sermon_ref"] = st.text_input("4면 본문 표기", B["sermon_ref"])
         B["sermon_body"] = st.text_area("4면 본문 전체", B["sermon_body"], height=400)
 
-    # 백업용
-    st.download_button("💾 이번 주 입력값 저장 (JSON)", data=json.dumps(B, ensure_ascii=False, indent=2), file_name=f"bulletin_{B['date_text']}.json", mime="application/json")
-    up = st.file_uploader("📂 지난주 JSON 불러오기", type=["json"])
-    if up:
-        st.session_state.bulletin = json.loads(up.read().decode("utf-8"))
-        st.rerun()
+# ---------------- HTML 생성 ----------------
+def esc(s):
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-# ---------------- HTML 템플릿: A4 2장 = 4면 ----------------
 def row(label, center, who, star=False):
-    s = "*" if star else ""
-    return f'<tr><td class="l">{s}{label}</td><td class="c">{center}</td><td class="r">{who}</td></tr>'
+    return f'<tr><td class="l">{"*" if star else ""}{label}</td><td class="c">{center}</td><td class="r">{who}</td></tr>'
 
-prayer_rows = "".join([f'<tr><td>{d}</td><td>{n}</td></tr>' for d, n in B["prayers"]])
-sermon_body_html = B["sermon_body"].replace("\n", "<br>")
+prayer_rows = "".join([f'<tr><td>{esc(d)}</td><td>{esc(n)}</td></tr>' for d, n in B["prayers"]])
+sermon_body_html = esc(B["sermon_body"]).replace("\n", "<br>")
+cover_img_html = f'<img class="cover-img" src="{st.session_state.cover_img}">' if st.session_state.cover_img else '<div style="font-size:64px;">🌱</div><div style="color:#888;font-size:11px;">표지 사진 자리</div>'
 
-html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>{esc(B['date_text'])} 주보</title><style>
 @page {{ size: A4; margin: 0; }}
 * {{ box-sizing: border-box; }}
-body {{ margin:0; font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; color:#111; background:#eee; }}
-.sheet {{ width:210mm; height:297mm; background:white; margin:0 auto 10mm; padding:10mm 10mm; page-break-after:always; position:relative; overflow:hidden; }}
+body {{ margin:0; font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; color:#111; background:white; }}
+.sheet {{ width:210mm; height:297mm; background:white; margin:0 auto; padding:10mm; page-break-after:always; overflow:hidden; }}
 .page {{ width:100%; height:100%; display:flex; gap:6mm; }}
 .half {{ flex:1; border:2px dotted #111; border-radius:18px; padding:6mm 5mm; position:relative; overflow:hidden; }}
-/* 표지 */
 .cover {{ display:flex; flex-direction:column; justify-content:space-between; text-align:center; border:none; }}
 .top-line {{ display:flex; justify-content:space-between; font-size:10px; }}
-.church {{ font-size:26px; font-weight:900; letter-spacing:1px; }}
-.church-big {{ font-size:38px; font-weight:900; letter-spacing:2px; line-height:1.2; }}
+.church {{ font-size:26px; font-weight:900; }}
 .theme {{ color:#2a6cff; font-size:20px; font-weight:800; margin-top:4mm; }}
-.sprout {{ width:78%; margin:8mm auto; display:block; }}
+.cover-img {{ width:82%; max-height:95mm; object-fit:cover; margin:6mm auto 0; display:block; border-radius:6px; }}
 .pastors {{ display:flex; justify-content:space-between; font-size:13px; line-height:1.9; text-align:left; }}
 .addr {{ text-align:center; font-size:12px; margin-top:3mm; }}
-/* 소식 */
 h3 {{ text-align:center; font-size:18px; margin:0 0 3mm; }}
 .welcome {{ text-align:center; color:#2a2a9a; font-weight:700; line-height:1.6; font-size:13px; }}
 .news {{ font-size:12.5px; line-height:1.75; }}
@@ -219,11 +218,12 @@ h3 {{ text-align:center; font-size:18px; margin:0 0 3mm; }}
 .mini td {{ border-bottom:1px solid #111; padding:1.2mm 2mm; }}
 .mini td:first-child {{ width:32%; text-align:center; }}
 .donor {{ font-size:12px; line-height:1.9; }}
-.donor b {{ display:inline-block; width:18mm; }}
+.donor-row {{ display:flex; gap:2mm; }}
+.donor-row b {{ flex:0 0 20mm; white-space:nowrap; }}
+.donor-row span {{ flex:1; }}
 .guide {{ width:100%; border-collapse:collapse; font-size:11px; margin-top:1mm; }}
 .guide td {{ border:1px solid #999; padding:1mm 2mm; }}
 .guide th {{ background:#eee; padding:1mm; }}
-/* 예배 */
 .worship-title {{ border:3px solid #111; text-align:center; font-size:30px; font-weight:900; letter-spacing:8px; padding:2mm; margin-bottom:6mm; }}
 .worship-head {{ display:flex; justify-content:space-between; font-size:14px; margin-bottom:4mm; }}
 .worship table {{ width:100%; border-collapse:collapse; font-size:13px; }}
@@ -232,29 +232,24 @@ h3 {{ text-align:center; font-size:18px; margin:0 0 3mm; }}
 .worship .c {{ width:52%; text-align:center; }}
 .worship .r {{ width:28%; text-align:right; }}
 .note {{ position:absolute; bottom:4mm; left:5mm; font-size:11px; }}
-/* 본문 */
 .sermon-title {{ text-align:center; font-size:42px; font-weight:900; letter-spacing:12px; }}
 .sermon-ref {{ text-align:center; font-size:12px; margin:3mm 0 5mm; }}
 .sermon-body {{ font-size:12.5px; line-height:2.0; }}
-@media print {{ body {{ background:white; }} .sheet {{ margin:0; }} .no-print {{ display:none !important; }} }}
+@media print {{ body {{ background:white; }} .sheet {{ margin:0; }} }}
 </style></head><body>
-
-<!-- ===== A4 1장째: 앞면 = 2면(소식) | 뒷면 = 1면(표지) : 접으면 표지가 겉으로 ===== -->
 <div class="sheet"><div class="page">
   <div class="half">
     <h3>◍ 교회 소식 ◍</h3>
     <div class="welcome">♡ 주일 예배에 함께하신 귀하신 성도님들을<br>예수님의 이름으로 환영합니다. ♡</div>
-    <div class="news"><ol>
-      <li>{B['news1']}</li><li>{B['news2']}</li><li>{B['news3']}</li><li>{B['news4']}</li><li>{B['news5']}</li>
-    </ol></div>
+    <div class="news"><ol><li>{esc(B['news1'])}</li><li>{esc(B['news2'])}</li><li>{esc(B['news3'])}</li><li>{esc(B['news4'])}</li><li>{esc(B['news5'])}</li></ol></div>
     <h3 style="font-size:14px;">♡ 11월 대표 기도자 ♡</h3>
     <table class="mini">{prayer_rows}</table>
     <h3 style="font-size:14px;">◍ 지난주 헌금하신 분 ◍</h3>
     <div class="donor">
-      <div><b>● 십 일 조 :</b> {B['donor_tithe']}</div>
-      <div><b>● 감사헌금 :</b> {B['donor_thanks']}</div>
-      <div><b>● 선교헌금 :</b> {B['donor_mission']}</div>
-      <div><b>● 주정헌금 :</b> {B['donor_sunday']}</div>
+      <div class="donor-row"><b>● 십 일 조 :</b><span>{esc(B['donor_tithe'])}</span></div>
+      <div class="donor-row"><b>● 감사헌금 :</b><span>{esc(B['donor_thanks'])}</span></div>
+      <div class="donor-row"><b>● 선교헌금 :</b><span>{esc(B['donor_mission'])}</span></div>
+      <div class="donor-row"><b>● 주정헌금 :</b><span>{esc(B['donor_sunday'])}</span></div>
     </div>
     <div style="text-align:center; font-size:11px; margin-top:2mm;">&lt;예 배 안 내&gt;</div>
     <table class="guide"><tr><th>주 일 예 배</th><th>일 오전 11시 00분</th></tr>
@@ -264,60 +259,70 @@ h3 {{ text-align:center; font-size:18px; margin:0 0 3mm; }}
       <tr><td>●새벽기도회</td><td>매 일 오전 6시 00분</td></tr></table>
   </div>
   <div class="half cover">
-    <div class="top-line"><span>{B['issue']}</span><span>{B['church_founded']}</span><span>{B['date_text']}</span></div>
+    <div class="top-line"><span>{esc(B['issue'])}</span><span>{esc(B['church_founded'])}</span><span>{esc(B['date_text'])}</span></div>
     <div>
       <div style="font-size:20px;">✚ 대한예수교장로회</div>
       <div class="church">남서울전원교회</div>
-      <div class="theme">{B['theme_ko']}({B['theme_en']})</div>
-      <div style="font-size:64px; margin:8mm 0;">🌱</div>
-      <div style="color:#888; font-size:11px;">새싹 이미지 자리 - 원본 주보 이미지로 교체 가능</div>
+      <div class="theme">{esc(B['theme_ko'])}({esc(B['theme_en'])})</div>
+      {cover_img_html}
     </div>
     <div>
-      <div class="pastors"><div>{B['pastor1']}<br>{B['pastor2']}</div><div>{B['pastor3']}<br>{B['elder1']}<br>{B['elder2']}</div></div>
-      <div class="addr">{B['address']}<br>{B['phone']}</div>
+      <div class="pastors"><div>{esc(B['pastor1'])}<br>{esc(B['pastor2'])}</div><div>{esc(B['pastor3'])}<br>{esc(B['elder1'])}<br>{esc(B['elder2'])}</div></div>
+      <div class="addr">{esc(B['address'])}<br>{esc(B['phone'])}</div>
     </div>
   </div>
 </div></div>
-
-<!-- ===== A4 2장째: 앞면 = 4면(본문) | 뒷면 = 3면(예배순서) ===== -->
 <div class="sheet"><div class="page">
   <div class="half worship">
     <div class="worship-title">주 일 예 배</div>
-    <div class="worship-head"><span><u>{B['worship_time']}</u></span><span>사회자 : {B['leader']}</span></div>
+    <div class="worship-head"><span><u>{esc(B['worship_time'])}</u></span><span>사회자 : {esc(B['leader'])}</span></div>
     <table>
-      {row('묵 도', '----------------', B['mukdo'])}
-      {row('찬 송', B['hymn1'], B['hymn1_who'], True)}
-      {row('성시교독', B['reading']+'<br><small>'+B['reading_sub']+'</small>', B['reading_who'], True)}
-      {row('신앙고백', B['confession'], B['confession_who'], True)}
-      {row('찬 송', B['hymn2'], B['hymn2_who'])}
-      {row('기 도', '----------------', B['prayer_name'])}
-      {row('성경봉독', '&lt; '+B['bible_text']+' &gt;<br><small>'+B['bible_page']+'</small>', B['bible_who'])}
-      {row('헌 금', '----------------', B['offering_who'])}
-      {row('봉헌기도', '----------------', B['dedication_who'])}
-      {row('설 교', f'【 {B['sermon_title']} 】', B['sermon_preacher'])}
-      {row('찬 송', B['hymn3'], B['hymn3_who'])}
-      {row('교회소식', '----------------', B['news_who'])}
-      {row('찬 송', B['hymn4'], B['hymn4_who'], True)}
-      {row('축 도', '----------------', B['benediction_who'], True)}
+      {row('묵 도', '----------------', esc(B['mukdo']))}
+      {row('찬 송', esc(B['hymn1']), esc(B['hymn1_who']), True)}
+      {row('성시교독', esc(B['reading'])+'<br><small>'+esc(B['reading_sub'])+'</small>', esc(B['reading_who']), True)}
+      {row('신앙고백', esc(B['confession']), esc(B['confession_who']), True)}
+      {row('찬 송', esc(B['hymn2']), esc(B['hymn2_who']))}
+      {row('기 도', '----------------', esc(B['prayer_name']))}
+      {row('성경봉독', '&lt; '+esc(B['bible_text'])+' &gt;<br><small>'+esc(B['bible_page'])+'</small>', esc(B['bible_who']))}
+      {row('헌 금', '----------------', esc(B['offering_who']))}
+      {row('봉헌기도', '----------------', esc(B['dedication_who']))}
+      {row('설 교', '【 '+esc(B['sermon_title'])+' 】', esc(B['sermon_preacher']))}
+      {row('찬 송', esc(B['hymn3']), esc(B['hymn3_who']))}
+      {row('교회소식', '----------------', esc(B['news_who']))}
+      {row('찬 송', esc(B['hymn4']), esc(B['hymn4_who']), True)}
+      {row('축 도', '----------------', esc(B['benediction_who']), True)}
     </table>
     <div class="note">* 표는 일어나서</div>
   </div>
   <div class="half">
-    <div class="sermon-title">{B['sermon_page_title']}</div>
-    <div class="sermon-ref">{B['sermon_ref']}</div>
+    <div class="sermon-title">{esc(B['sermon_page_title'])}</div>
+    <div class="sermon-ref">{esc(B['sermon_ref'])}</div>
     <div class="sermon-body">{sermon_body_html}</div>
   </div>
 </div></div>
 </body></html>"""
 
+# ---------------- 화면: 미리보기 + 다운로드 (브라우저 인쇄가 아님) ----------------
 st.header(f"📄 {B['date_text']} - {B['issue']} 미리보기")
-st.caption("인쇄 설정: A4, 양면(짧은 쪽 뒤집기/단면 뒤집기), 여백 없음, 배경 그래픽 켜기. 접으면 표지(1면) - 소식(2면) - 예배(3면) - 본문(4면) 순서가 됩니다.")
+st.caption("⚠️ Streamlit 화면에서 바로 Ctrl+P를 누르면 사이드바까지 같이 인쇄됩니다. 아래 '주보 HTML 다운로드' 버튼으로 받은 파일만 열어서 인쇄하세요.")
 components.html(html, height=950, scrolling=True)
 
-if st.button("🖨️ 인쇄하기 / PDF로 저장", type="primary"):
-    js_html = html.replace("`", "").replace("</body></html>", "<script>window.onload=()=>window.print()</script></body></html>")
-    components.html(f"<script>var w=window.open('','_blank'); w.document.write(`{js_html}`); w.document.close();</script>", height=0)
-    st.info("새 창 인쇄창에서 프린터 선택 또는 'PDF로 저장'을 누르세요. 양면 인쇄로 설정하면 A4 2장으로 접지 주보가 됩니다.")
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.download_button("📥 ① 주보 HTML 다운로드 (인쇄용)", data=html.encode("utf-8"), file_name=f"주보_{B['date_text']}_{B['issue']}.html", mime="text/html", type="primary")
+with c2:
+    st.download_button("💾 ② 이번 주 입력값 저장 (JSON)", data=json.dumps({"bulletin": B, "cover_img": st.session_state.cover_img}, ensure_ascii=False, indent=2), file_name=f"bulletin_{B['date_text']}.json", mime="application/json")
+with c3:
+    up = st.file_uploader("📂 지난주 JSON 불러오기", type=["json"], key="json_up")
+    if up:
+        data = json.loads(up.read().decode("utf-8"))
+        st.session_state.bulletin = data.get("bulletin", data)
+        st.session_state.cover_img = data.get("cover_img", "")
+        st.rerun()
 
-with st.expander("⚙️ 인쇄 순서가 안 맞으면 이렇게 확인하세요"):
-    st.write("1) 프린터에서 '양면 - 짧은 쪽으로 뒤집기'로 하면 1장째 뒷면이 표지가 됩니다. 2) 단면으로 2장 뽑아서 겹쳐 접어도 됩니다. 3) 순서가 뒤집혀 나오면 프린터의 양면 방향을 '긴 쪽'으로 바꿔보세요.")
+with st.expander("🖨️ 인쇄 순서 (꼭 이 순서대로)", expanded=True):
+    st.write("1) 위 ①번으로 HTML 파일을 다운로드합니다.")
+    st.write("2) 다운로드한 HTML 파일을 더블클릭해서 브라우저로 엽니다. Streamlit이 아닌 주보만 뜹니다.")
+    st.write("3) Ctrl+P (맥은 Cmd+P) → 대상: 'PDF로 저장' 또는 프린터 선택")
+    st.write("4) 설정: 용지 A4, 여백 '없음', 배경 그래픽 '켬', 양면 '짧은 쪽으로 뒤집기'")
+    st.write("5) 앞뒤가 뒤집혀 나오면 양면을 '긴 쪽으로 뒤집기'로 한 번만 바꿔보세요.")
